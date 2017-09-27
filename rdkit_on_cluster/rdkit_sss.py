@@ -9,10 +9,10 @@ Substructure Search
 
 Perform substructure search on the cluster."""
 
-
 import argparse
 import sys
 import gzip
+import os
 import os.path as op
 from collections import Counter
 
@@ -80,7 +80,6 @@ def iter_csv_mols(fn, header, smiles_col="Canonical_Smiles", max_records=0, tag=
                     header.append("tag")
                 continue
             # make a copy with non-empty values
-
             rec = rec_from_cells(header, cells)  # make a copy with non-empty values
             if smiles_col in rec:
                 mol = Chem.MolFromSmiles(rec[smiles_col])
@@ -98,11 +97,11 @@ def iter_csv_mols(fn, header, smiles_col="Canonical_Smiles", max_records=0, tag=
         f.close()
 
 
-def sss_from_file(csv_fn, smiles_fn, output_folder, result_idx, smiles_col="Canonical_Smiles"):
+def sss_from_file(csv_fn, smiles_fn, output_folder, job_idx, smiles_col="Canonical_Smiles"):
     """Perform a Smiles substructure search.
     The list of Smiles and the CSV file to be searched are loaded from file."""
     smiles_list_orig = open(smiles_fn).read().split("\n")
-    smiles_list_orig = [smi.strip() for smi in smiles_list_orig]
+    smiles_list_orig = [smi.strip() for smi in smiles_list_orig if len(smi) > 2]
     status["Smiles read in"] = len(smiles_list_orig)
     smiles_list = []
     query_mols = []
@@ -113,36 +112,38 @@ def sss_from_file(csv_fn, smiles_fn, output_folder, result_idx, smiles_col="Cano
             query_mols.append(mol)
         else:
             status["Could not generate query mol"] += 1
-    res_fn = op.join(output_folder, "sss_result-{:03}.tsv".format(result_idx))
+    res_fn = op.join(output_folder, "sss_result-{:03}.tsv".format(job_idx))
     result_file = open(res_fn, "w")
     first_line = True
-    header = []
+    header_in = []
     hit_ctr = 0
-    for rec in iter_csv_mols(csv_fn, header, smiles_col=smiles_col):
+    for mol_ctr, rec in enumerate(iter_csv_mols(csv_fn.format(job_idx), header_in, smiles_col=smiles_col), 1):
         if first_line:
             first_line = False
-            header.append("Query")
-            result_file.write("\t".join(header) + "\n")
+            header_out = header_in.copy()
+            header_out.append("Query")
+            result_file.write("\t".join(header_out) + "\n")
             continue
         mol = rec["mol"]
         for idx, qm in enumerate(query_mols):
             if mol.HasSubstructMatch(qm):
                 rec["Query"] = smiles_list[idx]
                 hit_ctr += 1
-                write_rec(result_file, header, rec)
+                write_rec(result_file, header_out, rec)
                 break
     result_file.close()
-    status["Substruct hits"] += 1
+    status["Molecules searched"] = mol_ctr
+    status["Substruct hits"] = hit_ctr
 
 
 if __name__ == "__main__":
     status = Counter()
     # file_to_search file_w_smiles output_dir job_index
     parser = argparse.ArgumentParser(
-        descripiton="Substructure search from multiple Smiles in a tsv file.")
-    parser.add_argument("file_to_search", help="the tsv file to be searched.")
-    parser.add_argument("file_w_smiles", help="a file with Smiles to be aearched, one Smiles per line.")
-    parser.add_argument("output_dir", help="where to put the result files.")
+        description="Substructure search from multiple Smiles in a tsv file.")
+    parser.add_argument("file_to_search", help="the tsv file to be searched. It needs to contain the formatting place holder for the job id, e.g. '{:03d}'")
+    parser.add_argument("file_w_smiles", help="a file with Smiles to be searched, one Smiles per line.")
+    parser.add_argument("output_dir", help="where to put the result file.")
     parser.add_argument("job_idx", help="the job index (used for the name of the result file.",
                         type=int)
     parser.add_argument("-s", "--smiles", help="name of the Smiles column in the tsv file.")
@@ -152,18 +153,17 @@ if __name__ == "__main__":
     smiles_col = "Canonical_Smiles"
     if args.smiles is not None:
         smiles_col = args.smiles
-    print(smiles_col)
     err = False
     reason = ""
-    if not op.isfile(args.file_to_search):
+    if not op.isfile(args.file_to_search.format(args.job_idx)):
         err = True
         reason = "Input file {} could not be found.".format(args.file_to_search)
     elif not op.isfile(args.file_w_smiles):
         err = True
         reason = "File with Smiles {} could not be found.".format(args.file_w_smiles)
     elif not op.isdir(args.output_dir):
-        err = True
-        reason = "Output directory {} does not exist.".format(args.output_dir)
+        print("Output directory {} does not exist, creating...".format(args.output_dir))
+        os.makedirs(args.output_dir, exist_ok=True)
 
     if err:
         print(reason)
