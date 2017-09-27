@@ -137,7 +137,6 @@ def sss_from_file(csv_fn, smiles_fn, output_folder, job_idx, smiles_col="Canonic
 
 
 if __name__ == "__main__":
-    status = Counter()
     # file_to_search file_w_smiles output_dir job_index
     parser = argparse.ArgumentParser(
         description="Substructure search from multiple Smiles in a tsv file.")
@@ -169,7 +168,9 @@ if __name__ == "__main__":
         print(reason)
         usage()
 
+    status = Counter()
     sss_from_file(args.file_to_search, args.file_w_smiles, args.output_dir,
                   args.job_idx, smiles_col)
 
     print(tabulate(status.items()))
+    sys.stdout.flush()
