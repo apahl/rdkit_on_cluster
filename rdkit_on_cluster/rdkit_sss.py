@@ -125,12 +125,16 @@ def sss_from_file(csv_fn, smiles_fn, output_folder, job_idx, smiles_col="Canonic
             result_file.write("\t".join(header_out) + "\n")
             continue
         mol = rec["mol"]
+        hit = False
+        hit_smiles = []
         for idx, qm in enumerate(query_mols):
             if mol.HasSubstructMatch(qm):
-                rec["Query"] = smiles_list[idx]
-                hit_ctr += 1
-                write_rec(result_file, header_out, rec)
-                break
+                hit = True
+                hit_smiles.append(smiles_list[idx])
+        if hit:
+            hit_ctr += 1
+            rec["Query"] = ",".join(hit_smiles)
+            write_rec(result_file, header_out, rec)
     result_file.close()
     status["Molecules searched"] = mol_ctr
     status["Substruct hits"] = hit_ctr
